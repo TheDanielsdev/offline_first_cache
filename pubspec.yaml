@@ -1,6 +1,6 @@
 name: offline_first_cache
 description: "An offline-first HTTP client for Flutter/Dart with request queuing, GET caching (stale-while-revalidate, tag-based invalidation), and a built-in Queue Inspector UI."
-version: 0.0.2
+version: 0.0.4
 homepage: https://github.com/TheDanielsdev/offline_first_cache
 repository: https://github.com/TheDanielsdev/offline_first_cache
 issue_tracker: https://github.com/TheDanielsdev/offline_first_cache/issues
@@ -31,14 +31,7 @@ dev_dependencies:
   mocktail: ^1.0.4
 
 flutter:
-  plugin:
-    platforms:
-      android:
-        package: com.example.offline_first_cache  # Replace with your package name
-        pluginClass: OfflineFirstCachePlugin  # Set your plugin class name
-      ios:
-        pluginClass: OfflineFirstCachePlugin  # Set your plugin class name
-        podspec: offline_first_cache.podspec  # Add a podspec file if needed
+ 
 
 # The following sections for assets and fonts can be added as needed.
 # assets:

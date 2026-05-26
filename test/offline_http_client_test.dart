@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,11 +11,13 @@ Future<void> _initHive() async {
   _mockConnectivity();
   _hiveDir = await Directory.systemTemp.createTemp('hive_integration_test_');
   Hive.init(_hiveDir.path);
-  if (!Hive.isAdapterRegistered(0))
+  if (!Hive.isAdapterRegistered(0)) {
     Hive.registerAdapter(PendingRequestAdapter());
+  }
   if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(CachedItemAdapter());
-  if (!Hive.isAdapterRegistered(2))
+  if (!Hive.isAdapterRegistered(2)) {
     Hive.registerAdapter(DeadLetterRequestAdapter());
+  }
 }
 
 Future<void> _tearDownHive() async {
@@ -64,13 +65,13 @@ Dio _offlineDio() {
 void _mockConnectivity() {
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(
-        const MethodChannel('dev.fluttercommunity.plus/connectivity'),
-        (call) async {
-          if (call.method == 'check') return ['wifi'];
-          if (call.method == 'listen') return null;
-          return null;
-        },
-      );
+    const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+    (call) async {
+      if (call.method == 'check') return ['wifi'];
+      if (call.method == 'listen') return null;
+      return null;
+    },
+  );
 }
 
 void main() {
@@ -175,7 +176,8 @@ void main() {
       await client.dispose();
     });
 
-    test('POST offline with skipQueue throws error instead of queueing', () async {
+    test('POST offline with skipQueue throws error instead of queueing',
+        () async {
       final client = await makeClient(_offlineDio());
       expect(
         () => client.post('/posts', data: {'title': 'hello'}, skipQueue: true),
@@ -187,7 +189,8 @@ void main() {
 
     test('init with encrypt: false opens boxes without cipher', () async {
       n++;
-      final client = OfflineHttpClient(_mockDio(), logger: SilentOfflineLogger());
+      final client =
+          OfflineHttpClient(_mockDio(), logger: SilentOfflineLogger());
       await client.init(
         hivePath: _hiveDir.path,
         encrypt: false,
@@ -209,7 +212,8 @@ void main() {
       expect(offlineClient.queueLength, equals(1));
       await offlineClient.dispose();
 
-      final client = await makeClient(_mockDio(statusCode: 400, responseData: 'Bad Data'));
+      final client =
+          await makeClient(_mockDio(statusCode: 400, responseData: 'Bad Data'));
       await client.retryPending();
 
       expect(client.queueLength, equals(0));

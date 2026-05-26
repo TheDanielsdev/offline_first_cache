@@ -24,13 +24,14 @@ class CachedItemAdapter extends TypeAdapter<CachedItem> {
       tags: (fields[4] as List).cast<String>(),
       etag: fields[5] as String?,
       lastModified: fields[6] as String?,
+      lastAccessedAt: fields[7] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, CachedItem obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.key)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class CachedItemAdapter extends TypeAdapter<CachedItem> {
       ..writeByte(5)
       ..write(obj.etag)
       ..writeByte(6)
-      ..write(obj.lastModified);
+      ..write(obj.lastModified)
+      ..writeByte(7)
+      ..write(obj.lastAccessedAt);
   }
 
   @override

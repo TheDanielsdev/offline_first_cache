@@ -26,6 +26,8 @@ It handles offline GET caching (with tag invalidation, stale-while-revalidate) a
 - 🔒 **Optional AES Encryption**: Encrypts offline boxes using Hive AES ciphers. Keys are stored securely in keychain/keystore via `flutter_secure_storage` with key rotation support.
 - 📊 **Reactive Event Stream**: Listen to events (`ConnectivityChangedEvent`, `CacheHitEvent`, `RetrySucceededEvent`, etc.) globally for analytics or in-app notifications.
 - 🖥️ **Queue Inspector UI**: A built-in debug panel widget (`QueueInspector`) to monitor pending requests, inspect headers/payloads, replay dead letters, and trigger manual retries.
+- 🔁 **Custom Retry Policies**: Fully control retry flow by deciding which HTTP status codes or exception types should trigger retries or go straight to the Dead Letter Queue.
+- ⚡ **Optimistic Cache-Queue Merging**: Query pending mutations in real-time to merge offline updates with cached responses, providing a zero-latency, seamless Optimistic UI experience.
 
 ---
 
@@ -130,6 +132,62 @@ try {
 } on DioException catch (e) {
   print('Login failed: ${e.message}');
 }
+```
+
+### 4. Custom Pluggable Retry Policies
+
+Write custom retry behaviors by defining an `OfflineRetryPolicy` to handle different failure modes (e.g., immediately dead-lettering custom application failures while retrying network or server-side issues).
+
+```dart
+class MyCustomRetryPolicy implements OfflineRetryPolicy {
+  @override
+  bool shouldRetry(DioException exception, int attemptCount) {
+    if (attemptCount >= 5) return false; // Retry up to 5 times
+
+    final statusCode = exception.response?.statusCode ?? 0;
+
+    // Custom logic: do not retry unauthorized requests (401),
+    // but retry on rate limits (429) or server-side errors (5xx)
+    if (statusCode == 401) return false;
+
+    return true;
+  }
+}
+
+// Pass it to your client configuration:
+final client = OfflineHttpClient(
+  dio,
+  config: const OfflineClientConfig(
+    maxRetries: 5,
+    retryPolicy: MyCustomRetryPolicy(),
+  ),
+);
+```
+
+### 5. Optimistic UI Updates (Cache-Queue Merging)
+
+Query pending mutations in the queue matching a resource path and merge them with your cached GET response for instant, zero-latency Optimistic UI.
+
+```dart
+// 1. Fetch cached data
+final cachedResponse = await client.get('/posts');
+final List<Post> posts = parsePosts(cachedResponse.data);
+
+// 2. Fetch pending local mutations from the queue
+final pendingMutations = client.getPendingMutationsForPath('/posts');
+
+// 3. Merge them optimistically!
+for (final mutation in pendingMutations) {
+  if (mutation.method == 'POST') {
+    posts.insert(0, Post.fromJson(mutation.body));
+  } else if (mutation.method == 'PUT') {
+    final updatedPost = Post.fromJson(mutation.body);
+    final idx = posts.indexWhere((p) => p.id == updatedPost.id);
+    if (idx != -1) posts[idx] = updatedPost;
+  }
+}
+
+// 4. Render 'posts' in your UI — it includes all offline changes instantly!
 ```
 
 ---

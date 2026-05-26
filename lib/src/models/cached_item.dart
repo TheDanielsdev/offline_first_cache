@@ -26,6 +26,9 @@ class CachedItem extends HiveObject {
   @HiveField(6)
   final String? lastModified;
 
+  @HiveField(7)
+  DateTime? lastAccessedAt;
+
   CachedItem({
     required this.key,
     required this.data,
@@ -34,7 +37,9 @@ class CachedItem extends HiveObject {
     this.tags = const [],
     this.etag,
     this.lastModified,
-  }) : cachedAt = cachedAt ?? DateTime.now();
+    DateTime? lastAccessedAt,
+  }) : cachedAt = cachedAt ?? DateTime.now(),
+       lastAccessedAt = lastAccessedAt ?? cachedAt ?? DateTime.now();
 
   bool get isExpired =>
       DateTime.now().difference(cachedAt).inSeconds >= ttlSeconds;
@@ -42,6 +47,8 @@ class CachedItem extends HiveObject {
   bool get isStale => isExpired;
 
   DateTime get expiresAt => cachedAt.add(Duration(seconds: ttlSeconds));
+
+  DateTime get lastAccessed => lastAccessedAt ?? cachedAt;
 }
 
 @HiveType(typeId: 2)

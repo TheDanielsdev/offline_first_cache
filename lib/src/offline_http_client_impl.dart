@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -108,9 +107,9 @@ class OfflineHttpClient {
     OfflineClientConfig config = const OfflineClientConfig(),
     FlutterSecureStorage? secureStorage,
     OfflineLogger? logger,
-  }) : _config = config,
-       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-       _logger = logger ?? ConsoleOfflineLogger(minLevel: config.logLevel) {
+  })  : _config = config,
+        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+        _logger = logger ?? ConsoleOfflineLogger(minLevel: config.logLevel) {
     queueSizeNotifier = ValueNotifier(0);
     events.listen((e) {
       if (e is RequestQueuedEvent ||
@@ -237,15 +236,16 @@ class OfflineHttpClient {
     int priority = 1,
     Duration? requestTtl,
     bool skipQueue = false,
-  }) => _mutate(
-    'POST',
-    path,
-    data: data,
-    options: options,
-    priority: priority,
-    requestTtl: requestTtl,
-    skipQueue: skipQueue,
-  );
+  }) =>
+      _mutate(
+        'POST',
+        path,
+        data: data,
+        options: options,
+        priority: priority,
+        requestTtl: requestTtl,
+        skipQueue: skipQueue,
+      );
 
   /// PUT — queued offline if network is unavailable.
   Future<Response> put(
@@ -255,15 +255,16 @@ class OfflineHttpClient {
     int priority = 1,
     Duration? requestTtl,
     bool skipQueue = false,
-  }) => _mutate(
-    'PUT',
-    path,
-    data: data,
-    options: options,
-    priority: priority,
-    requestTtl: requestTtl,
-    skipQueue: skipQueue,
-  );
+  }) =>
+      _mutate(
+        'PUT',
+        path,
+        data: data,
+        options: options,
+        priority: priority,
+        requestTtl: requestTtl,
+        skipQueue: skipQueue,
+      );
 
   /// PATCH — queued offline if network is unavailable.
   Future<Response> patch(
@@ -273,15 +274,16 @@ class OfflineHttpClient {
     int priority = 1,
     Duration? requestTtl,
     bool skipQueue = false,
-  }) => _mutate(
-    'PATCH',
-    path,
-    data: data,
-    options: options,
-    priority: priority,
-    requestTtl: requestTtl,
-    skipQueue: skipQueue,
-  );
+  }) =>
+      _mutate(
+        'PATCH',
+        path,
+        data: data,
+        options: options,
+        priority: priority,
+        requestTtl: requestTtl,
+        skipQueue: skipQueue,
+      );
 
   /// DELETE — queued offline if network is unavailable.
   Future<Response> delete(
@@ -291,15 +293,16 @@ class OfflineHttpClient {
     int priority = 1,
     Duration? requestTtl,
     bool skipQueue = false,
-  }) => _mutate(
-    'DELETE',
-    path,
-    data: data,
-    options: options,
-    priority: priority,
-    requestTtl: requestTtl,
-    skipQueue: skipQueue,
-  );
+  }) =>
+      _mutate(
+        'DELETE',
+        path,
+        data: data,
+        options: options,
+        priority: priority,
+        requestTtl: requestTtl,
+        skipQueue: skipQueue,
+      );
 
   Future<Response> _mutate(
     String method,
@@ -346,7 +349,8 @@ class OfflineHttpClient {
   /// Retry all pending requests in priority order with exponential backoff.
   Future<void> retryPending() async {
     if (_isFlushing) {
-      _logger.info('Queue flush already in progress — skipping concurrent retryPending()');
+      _logger.info(
+          'Queue flush already in progress — skipping concurrent retryPending()');
       return;
     }
     _isFlushing = true;
@@ -377,7 +381,8 @@ class OfflineHttpClient {
 
         // Re-check online status after delay
         if (!_isOnline) {
-          _logger.info('Aborting queue flush — client went offline after delay');
+          _logger
+              .info('Aborting queue flush — client went offline after delay');
           break;
         }
 
@@ -423,9 +428,13 @@ class OfflineHttpClient {
           if (statusCode >= 200 && statusCode < 300) {
             await _queue.recordSuccess(request);
             success++;
-          } else if (statusCode >= 400 && statusCode < 500 && statusCode != 408 && statusCode != 429) {
+          } else if (statusCode >= 400 &&
+              statusCode < 500 &&
+              statusCode != 408 &&
+              statusCode != 429) {
             // HTTP 4xx Client Error (excluding 408/429) -> dead letter immediately!
-            await _queue.moveToDeadLetter(request, 'Client error: HTTP $statusCode');
+            await _queue.moveToDeadLetter(
+                request, 'Client error: HTTP $statusCode');
             deadLettered++;
           } else {
             final outcome = await _queue.recordFailure(
@@ -443,7 +452,8 @@ class OfflineHttpClient {
           if (isNetwork) {
             // Connection / network issue -> abort the flush loop immediately
             // to prevent exhausting retry limits for all subsequent requests!
-            _logger.warning('Aborting queue flush — connection error: ${e.message}');
+            _logger.warning(
+                'Aborting queue flush — connection error: ${e.message}');
             // Also log a failure for the current request but keep it in the queue for next flush
             await _queue.recordFailure(request, e.toString());
             failed++;
@@ -451,9 +461,13 @@ class OfflineHttpClient {
           }
 
           final statusCode = e.response?.statusCode ?? 0;
-          if (statusCode >= 400 && statusCode < 500 && statusCode != 408 && statusCode != 429) {
+          if (statusCode >= 400 &&
+              statusCode < 500 &&
+              statusCode != 408 &&
+              statusCode != 429) {
             // HTTP 4xx Client Error -> dead letter immediately!
-            await _queue.moveToDeadLetter(request, 'Client error: DioException HTTP $statusCode (${e.message})');
+            await _queue.moveToDeadLetter(request,
+                'Client error: DioException HTTP $statusCode (${e.message})');
             deadLettered++;
           } else {
             final outcome = await _queue.recordFailure(request, e.toString());
@@ -613,7 +627,6 @@ class OfflineHttpClient {
           }
           return handler.next(options);
         },
-
         onResponse: (response, handler) async {
           if (response.requestOptions.method.toUpperCase() == 'GET') {
             // 304 Not Modified — update cachedAt timestamp to reset TTL
@@ -641,7 +654,6 @@ class OfflineHttpClient {
           }
           return handler.next(response);
         },
-
         onError: (err, handler) async {
           final options = err.requestOptions;
           final method = options.method.toUpperCase();
@@ -704,11 +716,9 @@ class OfflineHttpClient {
 
   Future<void> _writeCacheFromResponse(Response response) async {
     final key = response.requestOptions.uri.toString();
-    final ttl =
-        response.requestOptions.extra['cache_ttl_seconds'] as int? ??
+    final ttl = response.requestOptions.extra['cache_ttl_seconds'] as int? ??
         _config.defaultCacheTtl.inSeconds;
-    final tags =
-        (response.requestOptions.extra['_cache_tags'] as List?)
+    final tags = (response.requestOptions.extra['_cache_tags'] as List?)
             ?.cast<String>() ??
         <String>[];
 

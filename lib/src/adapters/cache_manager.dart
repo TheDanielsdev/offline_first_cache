@@ -24,11 +24,25 @@ class CacheManager {
     final item = _box.get(key);
     if (item == null) return null;
     if (item.isExpired) return null;
+    _updateLastAccessed(item);
     return item;
   }
 
   /// Read allowing stale items (for stale-while-revalidate pattern).
-  CachedItem? readAllowingStale(String key) => _box.get(key);
+  CachedItem? readAllowingStale(String key) {
+    final item = _box.get(key);
+    if (item != null) {
+      _updateLastAccessed(item);
+    }
+    return item;
+  }
+
+  void _updateLastAccessed(CachedItem item) {
+    item.lastAccessedAt = DateTime.now();
+    item.save().catchError((e) {
+      _logger.warning('Failed to save last accessed timestamp for ${item.key}: $e');
+    });
+  }
 
   /// Write a new cache entry, evicting LRU items if over capacity.
   Future<void> write(CachedItem item) async {
@@ -88,12 +102,12 @@ class CacheManager {
 
   int get itemCount => _box.length;
 
-  /// LRU eviction: remove oldest (by cachedAt) when over maxItems.
+  /// LRU eviction: remove oldest (by lastAccessed) when over maxItems.
   Future<void> _enforceSizeLimit() async {
     if (_box.length < maxItems) return;
 
     final sorted = _box.values.toList()
-      ..sort((a, b) => a.cachedAt.compareTo(b.cachedAt));
+      ..sort((a, b) => a.lastAccessed.compareTo(b.lastAccessed));
 
     // Remove oldest 20% to avoid evicting one at a time
     final removeCount = (maxItems * 0.2).ceil();
@@ -102,7 +116,7 @@ class CacheManager {
       await _box.delete(key);
     }
     _logger.info(
-      'LRU eviction: removed $removeCount items (was at ${_box.length + removeCount})',
+      'True LRU eviction: removed $removeCount least-recently-accessed items (was at ${_box.length + removeCount})',
     );
   }
 }

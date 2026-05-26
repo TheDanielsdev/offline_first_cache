@@ -1,4 +1,4 @@
-// example/main.dart
+// example/lib/main.dart
 //
 // Full working example demonstrating every new feature of OfflineHttpClient.
 // Run on a device/emulator — it will work online and gracefully degrade offline.

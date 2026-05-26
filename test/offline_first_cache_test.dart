@@ -8,7 +8,6 @@ import 'package:hive/hive.dart';
 // Single barrel import — works regardless of internal folder structure.
 // Make sure your lib/offline_first_cache.dart re-exports everything needed.
 import 'package:offline_first_cache/offline_first_cache.dart';
-import 'package:offline_first_cache/src/adapters/backoff_calc.dart';
 
 // ---------------------------------------------------------------------------
 // Hive test bootstrap
@@ -22,11 +21,13 @@ late Directory _hiveDir;
 Future<void> _initHive() async {
   _hiveDir = await Directory.systemTemp.createTemp('hive_test_');
   Hive.init(_hiveDir.path);
-  if (!Hive.isAdapterRegistered(0))
+  if (!Hive.isAdapterRegistered(0)) {
     Hive.registerAdapter(PendingRequestAdapter());
+  }
   if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(CachedItemAdapter());
-  if (!Hive.isAdapterRegistered(2))
+  if (!Hive.isAdapterRegistered(2)) {
     Hive.registerAdapter(DeadLetterRequestAdapter());
+  }
 }
 
 Future<void> _tearDownHive() async {
@@ -203,9 +204,8 @@ void main() {
     });
 
     test('isExpired is false when expiresAtMs is in the future', () {
-      final future = DateTime.now()
-          .add(const Duration(hours: 1))
-          .millisecondsSinceEpoch;
+      final future =
+          DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch;
       expect(make(expiresAtMs: future).isExpired, isFalse);
     });
 
