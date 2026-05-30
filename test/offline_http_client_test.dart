@@ -82,9 +82,13 @@ void main() {
 
   int n = 0;
 
-  Future<OfflineHttpClient> makeClient(Dio dio) async {
+  Future<OfflineHttpClient> makeClient(Dio dio, {OfflineClientConfig? config}) async {
     n++;
-    final client = OfflineHttpClient(dio, logger: SilentOfflineLogger());
+    final client = OfflineHttpClient(
+      dio,
+      logger: SilentOfflineLogger(),
+      config: config ?? const OfflineClientConfig(),
+    );
     await client.init(
       hivePath: _hiveDir.path,
       encryptionKey: Uint8List(
@@ -238,5 +242,48 @@ void main() {
 
       await client.dispose();
     });
+
+    test('custom retry policy decides retries and dead-lettering', () async {
+      final customPolicy = CustomTestRetryPolicy();
+      final offlineClient = await makeClient(
+        _offlineDio(),
+        config: OfflineClientConfig(retryPolicy: customPolicy),
+      );
+      await offlineClient.post('/posts/1', data: {'val': 1});
+      expect(offlineClient.queueLength, equals(1));
+      await offlineClient.dispose();
+
+      // Mock 400 Bad Request response for the retry attempt
+      final dio = _mockDio(statusCode: 400, responseData: {'error': 'Bad Request'});
+
+      final client = await makeClient(
+        dio,
+        config: OfflineClientConfig(retryPolicy: customPolicy),
+      );
+
+      // Attempt 1: Custom policy returns true, so it records failure and increments retryCount
+      await client.retryPending();
+      expect(client.queueLength, equals(1));
+      expect(client.queueBox.values.first.retryCount, equals(1));
+
+      // Attempt 2: Custom policy returns false (since attemptCount is 2), so it dead-letters
+      await client.retryPending();
+      expect(client.queueLength, equals(0));
+      expect(client.deadLetterLength, equals(1));
+
+      await client.dispose();
+    });
   });
+}
+
+class CustomTestRetryPolicy implements OfflineRetryPolicy {
+  @override
+  bool shouldRetry(DioException exception, int attemptCount) {
+    // Retry if statusCode is 400, but only for the first attempt
+    final code = exception.response?.statusCode;
+    if (code == 400) {
+      return attemptCount < 2;
+    }
+    return false;
+  }
 }

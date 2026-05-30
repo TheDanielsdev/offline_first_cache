@@ -520,8 +520,10 @@ class _MethodBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
+        // ignore: deprecated_member_use
         color: _color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(4),
+        // ignore: deprecated_member_use
         border: Border.all(color: _color.withOpacity(0.5)),
       ),
       child: Text(
@@ -545,8 +547,10 @@ class _PriorityBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
+        // ignore: deprecated_member_use
         color: priority.color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(10),
+        // ignore: deprecated_member_use
         border: Border.all(color: priority.color.withOpacity(0.4)),
       ),
       child: Text(

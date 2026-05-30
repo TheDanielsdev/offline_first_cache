@@ -1,0 +1,57 @@
+00:00 +0: loading /home/nurudeen/TheDaniels/FLUTTER_APPS/My Flutter Packages/offline_first_cache/test/offline_first_cache_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: BackoffCalculator delay for attempt 0 is between 0 and base
+00:00 +1: BackoffCalculator delay is capped at cap value
+00:00 +2: BackoffCalculator delay grows with attempt number on average
+00:00 +3: RequestDeduplicator same method + url + body produces same hash
+00:00 +4: RequestDeduplicator body key order does not matter
+00:01 +5: RequestDeduplicator different url produces different hash
+00:01 +6: RequestDeduplicator different method produces different hash
+00:01 +7: CachedItem isExpired is false when TTL has not elapsed
+00:01 +8: CachedItem isExpired is true when TTL has elapsed
+00:01 +9: CachedItem expiresAt is cachedAt + ttl
+00:01 +10: PendingRequest isExpired is false when no expiresAtMs set
+00:01 +11: PendingRequest isExpired is true when expiresAtMs is in the past
+00:01 +12: PendingRequest isExpired is false when expiresAtMs is in the future
+00:01 +13: PendingRequest maskedHeaders redacts Authorization, x-api-key, cookie
+00:01 +14: PendingRequest priorityLevel maps 0–3 correctly
+00:01 +15: QueueManager enqueue adds item to queue
+00:02 +16: QueueManager enqueue deduplicates identical requests
+00:02 +17: QueueManager different bodies are not deduplicated
+00:02 +18: QueueManager recordFailure increments retryCount and returns willRetry
+00:03 +19: QueueManager recordFailure dead-letters after maxRetries exceeded
+00:03 +20: QueueManager recordSuccess removes item from queue
+00:03 +21: QueueManager prioritizedQueue sorts high priority first
+00:03 +22: QueueManager replayDeadLetter moves item back to main queue
+00:04 +23: CacheManager read returns null for missing key
+00:04 +24: CacheManager read returns null for expired item
+00:04 +25: CacheManager read returns item when fresh
+00:04 +26: CacheManager invalidateByTag removes tagged items only
+00:05 +27: CacheManager LRU eviction triggers when over maxItems
+00:05 +28: CacheManager purgeExpired removes only expired items
+00:05 +29: OfflineHttpClient can be constructed without error
+00:05 +30: OfflineHttpClient queueSizeNotifier starts at 0
+00:05 +31: OfflineHttpClient isOnline defaults to true before init()
+00:06 +32: OfflineEvent types all event types carry a recent timestamp
+00:06 +33: DefaultOfflineRetryPolicy shouldRetry returns false when attemptCount exceeds maxRetries
+00:06 +34: DefaultOfflineRetryPolicy shouldRetry returns false on standard 4xx client errors except 408/429
+00:06 +35: OfflineHttpClient.mergePendingMutations POST appends to the beginning of the list
+INSTALLING INTERCEPTOR! BEFORE length=1
+CLIENT INTERCEPTOR ON_REQUEST: POST /items
+INTERCEPTOR ON_ERROR CALLED: err.type=DioExceptionType.connectionError, err.message=Connection failed, method=POST
+00:08 +36: OfflineHttpClient.mergePendingMutations PUT replaces matching item in list or appends if not found
+INSTALLING INTERCEPTOR! BEFORE length=1
+CLIENT INTERCEPTOR ON_REQUEST: PUT /items/1
+INTERCEPTOR ON_ERROR CALLED: err.type=DioExceptionType.connectionError, err.message=Connection failed, method=PUT
+CLIENT INTERCEPTOR ON_REQUEST: PUT /items/99
+INTERCEPTOR ON_ERROR CALLED: err.type=DioExceptionType.connectionError, err.message=Connection failed, method=PUT
+00:08 +37: OfflineHttpClient.mergePendingMutations PATCH partially updates matching item in list and single map
+INSTALLING INTERCEPTOR! BEFORE length=1
+CLIENT INTERCEPTOR ON_REQUEST: PATCH /items/1
+INTERCEPTOR ON_ERROR CALLED: err.type=DioExceptionType.connectionError, err.message=Connection failed, method=PATCH
+00:09 +38: OfflineHttpClient.mergePendingMutations DELETE removes matching item from list and returns null for map
+INSTALLING INTERCEPTOR! BEFORE length=1
+CLIENT INTERCEPTOR ON_REQUEST: DELETE /items/1
+INTERCEPTOR ON_ERROR CALLED: err.type=DioExceptionType.connectionError, err.message=Connection failed, method=DELETE
+00:10 +39: (tearDownAll)
+00:10 +39: All tests passed!

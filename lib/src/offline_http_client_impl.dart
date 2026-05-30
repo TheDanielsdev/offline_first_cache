@@ -11,6 +11,7 @@ import 'package:offline_first_cache/src/adapters/cache_manager.dart';
 import 'package:offline_first_cache/src/adapters/offline_event.dart';
 import 'package:offline_first_cache/src/adapters/offline_logger.dart';
 import 'package:offline_first_cache/src/adapters/queue_manager.dart';
+import 'package:offline_first_cache/src/adapters/retry_policy.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'models/pending_request.dart';
 import 'models/cached_item.dart';
@@ -38,6 +39,9 @@ class OfflineClientConfig {
   /// Minimum log level for the built-in logger.
   final OfflineLogLevel logLevel;
 
+  /// Custom pluggable retry policy.
+  final OfflineRetryPolicy? retryPolicy;
+
   const OfflineClientConfig({
     this.defaultCacheTtl = const Duration(minutes: 30),
     this.defaultRequestTtl,
@@ -45,6 +49,7 @@ class OfflineClientConfig {
     this.maxCacheItems = 200,
     this.staleWhileRevalidate = true,
     this.logLevel = OfflineLogLevel.info,
+    this.retryPolicy,
   });
 }
 
@@ -68,6 +73,7 @@ class OfflineHttpClient {
 
   late CacheManager _cache;
   late QueueManager _queue;
+  late final OfflineRetryPolicy _retryPolicy;
 
   final Connectivity _connectivity = Connectivity();
   StreamSubscription? _connectivitySub;
@@ -110,6 +116,7 @@ class OfflineHttpClient {
   })  : _config = config,
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _logger = logger ?? ConsoleOfflineLogger(minLevel: config.logLevel) {
+    _retryPolicy = config.retryPolicy ?? DefaultOfflineRetryPolicy(maxRetries: config.maxRetries);
     queueSizeNotifier = ValueNotifier(0);
     events.listen((e) {
       if (e is RequestQueuedEvent ||
@@ -185,13 +192,13 @@ class OfflineHttpClient {
 
     // Bootstrap connectivity state
     final result = await _connectivity.checkConnectivity();
-    _isOnline = result != ConnectivityResult.none;
+    _isOnline = result.isNotEmpty && !result.contains(ConnectivityResult.none);
 
     _connectivitySub = _connectivity.onConnectivityChanged.listen((
       event,
     ) async {
       final wasOnline = _isOnline;
-      _isOnline = event != ConnectivityResult.none;
+      _isOnline = event.isNotEmpty && !event.contains(ConnectivityResult.none);
       _emit(ConnectivityChangedEvent(isOnline: _isOnline));
       _logger.info('Connectivity changed: ${_isOnline ? "online" : "offline"}');
       if (!wasOnline && _isOnline) {
@@ -428,23 +435,29 @@ class OfflineHttpClient {
           if (statusCode >= 200 && statusCode < 300) {
             await _queue.recordSuccess(request);
             success++;
-          } else if (statusCode >= 400 &&
-              statusCode < 500 &&
-              statusCode != 408 &&
-              statusCode != 429) {
-            // HTTP 4xx Client Error (excluding 408/429) -> dead letter immediately!
-            await _queue.moveToDeadLetter(
-                request, 'Client error: HTTP $statusCode');
-            deadLettered++;
           } else {
-            final outcome = await _queue.recordFailure(
-              request,
-              'HTTP $statusCode',
+            final err = DioException(
+              requestOptions: res.requestOptions,
+              response: res,
+              type: DioExceptionType.badResponse,
+              message: 'HTTP error $statusCode',
             );
-            if (outcome == RetryOutcome.deadLettered)
+            if (!_retryPolicy.shouldRetry(err, request.retryCount + 1)) {
+              await _queue.moveToDeadLetter(
+                request,
+                'Retry policy blocked retry: HTTP $statusCode',
+              );
               deadLettered++;
-            else
-              failed++;
+            } else {
+              final outcome = await _queue.recordFailure(
+                request,
+                'HTTP $statusCode',
+              );
+              if (outcome == RetryOutcome.deadLettered)
+                deadLettered++;
+              else
+                failed++;
+            }
           }
         } on DioException catch (e) {
           final isNetwork = _isNetworkError(e);
@@ -460,14 +473,11 @@ class OfflineHttpClient {
             break;
           }
 
-          final statusCode = e.response?.statusCode ?? 0;
-          if (statusCode >= 400 &&
-              statusCode < 500 &&
-              statusCode != 408 &&
-              statusCode != 429) {
-            // HTTP 4xx Client Error -> dead letter immediately!
-            await _queue.moveToDeadLetter(request,
-                'Client error: DioException HTTP $statusCode (${e.message})');
+          if (!_retryPolicy.shouldRetry(e, request.retryCount + 1)) {
+            await _queue.moveToDeadLetter(
+              request,
+              'Retry policy blocked retry: DioException (${e.message})',
+            );
             deadLettered++;
           } else {
             final outcome = await _queue.recordFailure(request, e.toString());
@@ -477,11 +487,25 @@ class OfflineHttpClient {
               failed++;
           }
         } catch (e) {
-          final outcome = await _queue.recordFailure(request, e.toString());
-          if (outcome == RetryOutcome.deadLettered)
+          final err = DioException(
+            requestOptions: RequestOptions(path: request.url),
+            error: e,
+            type: DioExceptionType.unknown,
+            message: e.toString(),
+          );
+          if (!_retryPolicy.shouldRetry(err, request.retryCount + 1)) {
+            await _queue.moveToDeadLetter(
+              request,
+              'Retry policy blocked retry: $e',
+            );
             deadLettered++;
-          else
-            failed++;
+          } else {
+            final outcome = await _queue.recordFailure(request, e.toString());
+            if (outcome == RetryOutcome.deadLettered)
+              deadLettered++;
+            else
+              failed++;
+          }
         }
       }
 
@@ -515,6 +539,114 @@ class OfflineHttpClient {
   int get queueLength => _queue.queueLength;
   int get deadLetterLength => _queue.deadLetterLength;
   int get cacheSize => _cache.itemCount;
+
+  /// Returns all pending queued requests that match a specific URL path or prefix.
+  /// This is extremely useful for implementing **Optimistic UI updates** or
+  /// **Cache-Queue Merging** in the client application.
+  List<PendingRequest> getPendingMutationsForPath(String path) {
+    final normalizedPath = path.startsWith('/') ? path : '/$path';
+    return _queue.queueBox.values.where((request) {
+      try {
+        final uri = Uri.parse(request.url);
+        // Match if the request path starts with the normalized path, e.g. /posts/1 starts with /posts
+        return uri.path == normalizedPath || uri.path.startsWith('$normalizedPath/');
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+  }
+
+  /// Merges pending mutations matching [path] optimistically into the [cachedData].
+  ///
+  /// [cachedData] can be a [List] of JSON objects (Maps) or a single JSON [Map].
+  /// Supports:
+  /// - `POST`: Prepends the new resource to lists.
+  /// - `PUT`: Replaces the matching item (using keys like `id`, `_id`, `uuid`).
+  /// - `PATCH`: Partially merges updated keys into the matching list item or single Map.
+  /// - `DELETE`: Removes the matching item from lists (matching by URL segment or body ID).
+  dynamic mergePendingMutations(String path, dynamic cachedData) {
+    final mutations = getPendingMutationsForPath(path);
+    if (mutations.isEmpty) return cachedData;
+
+    // Helper to find ID from request URL path segment
+    String? extractIdFromUrl(String url) {
+      try {
+        final segments = Uri.parse(url).pathSegments;
+        if (segments.isNotEmpty) {
+          return segments.last;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    // Helper to check if an item matches the mutation (by ID)
+    bool matchesId(dynamic item, PendingRequest mutation) {
+      if (item is! Map) return false;
+      
+      final urlId = extractIdFromUrl(mutation.url);
+      final bodyId = (mutation.body['id'] ?? mutation.body['_id'] ?? mutation.body['uuid'])?.toString();
+      
+      for (final idKey in const ['id', '_id', 'uuid']) {
+        if (item.containsKey(idKey)) {
+          final itemIdStr = item[idKey]?.toString();
+          if (itemIdStr != null) {
+            if (itemIdStr == urlId || itemIdStr == bodyId) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    if (cachedData is List) {
+      final list = List<dynamic>.from(cachedData);
+      
+      for (final mutation in mutations) {
+        final method = mutation.method.toUpperCase();
+        final body = mutation.body;
+
+        if (method == 'POST') {
+          list.insert(0, body);
+        } else if (method == 'PUT') {
+          final idx = list.indexWhere((item) => matchesId(item, mutation));
+          if (idx != -1) {
+            list[idx] = body;
+          } else {
+            list.insert(0, body);
+          }
+        } else if (method == 'PATCH') {
+          final idx = list.indexWhere((item) => matchesId(item, mutation));
+          if (idx != -1) {
+            final original = list[idx];
+            if (original is Map) {
+              list[idx] = {...original, ...body};
+            }
+          }
+        } else if (method == 'DELETE') {
+          list.removeWhere((item) => matchesId(item, mutation));
+        }
+      }
+      return list;
+    } else if (cachedData is Map) {
+      var map = Map<String, dynamic>.from(cachedData);
+      for (final mutation in mutations) {
+        final method = mutation.method.toUpperCase();
+        final body = mutation.body;
+
+        if (method == 'PUT') {
+          map = Map<String, dynamic>.from(body);
+        } else if (method == 'PATCH') {
+          map = {...map, ...body};
+        } else if (method == 'DELETE') {
+          return null;
+        }
+      }
+      return map;
+    }
+
+    return cachedData;
+  }
 
   // ---------------------------------------------------------------------------
   // Encryption / key management
@@ -581,9 +713,11 @@ class OfflineHttpClient {
   }
 
   void _installInterceptors() {
+    print('INSTALLING INTERCEPTOR! BEFORE length=${_dio.interceptors.length}');
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          print('CLIENT INTERCEPTOR ON_REQUEST: ${options.method} ${options.path}');
           if (options.method.toUpperCase() == 'GET') {
             final cacheKey = options.uri.toString();
             final stale = _cache.readAllowingStale(cacheKey);
@@ -655,45 +789,51 @@ class OfflineHttpClient {
           return handler.next(response);
         },
         onError: (err, handler) async {
+          print('INTERCEPTOR ON_ERROR CALLED: err.type=${err.type}, err.message=${err.message}, method=${err.requestOptions.method}');
           final options = err.requestOptions;
           final method = options.method.toUpperCase();
           final isNetworkError = _isNetworkError(err);
           final skipQueue = options.extra['_skip_queue'] as bool? ?? false;
 
           if (isNetworkError && method != 'GET' && !skipQueue) {
-            final priority = options.extra['_priority'] as int? ?? 1;
-            final ttlMs = options.extra['_request_ttl_ms'] as int?;
-            final requestTtl = ttlMs != null
-                ? Duration(milliseconds: ttlMs)
-                : _config.defaultRequestTtl;
+            try {
+              final priority = options.extra['_priority'] as int? ?? 1;
+              final ttlMs = options.extra['_request_ttl_ms'] as int?;
+              final requestTtl = ttlMs != null
+                  ? Duration(milliseconds: ttlMs)
+                  : _config.defaultRequestTtl;
 
-            final body = options.data is Map<String, dynamic>
-                ? Map<String, dynamic>.from(options.data as Map)
-                : <String, dynamic>{'raw': options.data?.toString()};
+              final body = options.data is Map
+                  ? Map<String, dynamic>.from(options.data as Map)
+                  : <String, dynamic>{'raw': options.data?.toString()};
 
-            final id = await _queue.enqueue(
-              method: method,
-              url: options.uri.toString(),
-              headers: options.headers.map(
-                (k, v) => MapEntry(k, v?.toString()),
-              ),
-              body: body,
-              priority: priority,
-              requestTtl: requestTtl,
-            );
+              final id = await _queue.enqueue(
+                method: method,
+                url: options.uri.toString(),
+                headers: Map<String, String?>.from(options.headers.map(
+                  (k, v) => MapEntry(k, v?.toString()),
+                )),
+                body: body,
+                priority: priority,
+                requestTtl: requestTtl,
+              );
 
-            // id is null if deduplicated
-            return handler.resolve(
-              Response(
-                requestOptions: options,
-                statusCode: 202,
-                data: {
-                  '_offline_queued': id != null,
-                  '_offline_deduped': id == null,
-                  if (id != null) 'id': id,
-                },
-              ),
-            );
+              // id is null if deduplicated
+              return handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 202,
+                  data: {
+                    '_offline_queued': id != null,
+                    '_offline_deduped': id == null,
+                    if (id != null) 'id': id,
+                  },
+                ),
+              );
+            } catch (e, stack) {
+              print('ERROR IN INTERCEPTOR: $e\n$stack');
+              rethrow;
+            }
           }
 
           // For network GET errors, fall back to stale cache

@@ -1,4 +1,4 @@
-## 0.0.4
+## 0.0.5
 
 * **True Least-Recently-Used (LRU) Cache Eviction:** Optimized caching by replacing single-deletion with a true LRU algorithm that sorts and clears least-recently-accessed items when exceeding size capacity.
 * **Custom Pluggable Retry Policies:** Added support for pluggable `OfflineRetryPolicy` strategies, allowing custom retry decisions (e.g. dynamic status checks, permanent client error handling) rather than hardcoded rules.

@@ -1,6 +1,8 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
@@ -35,12 +37,44 @@ Future<void> _tearDownHive() async {
   await _hiveDir.delete(recursive: true);
 }
 
+void _mockConnectivity() {
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
+    const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+    (call) async {
+      if (call.method == 'check') return ['wifi'];
+      if (call.method == 'listen') return null;
+      return null;
+    },
+  );
+}
+
+class MockOfflineAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    throw DioException(
+      requestOptions: options,
+      type: DioExceptionType.connectionError,
+      message: 'Connection failed',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(_initHive);
+  setUpAll(_mockConnectivity);
   tearDownAll(_tearDownHive);
 
   // -------------------------------------------------------------------------
@@ -592,6 +626,170 @@ void main() {
           reason: '${event.runtimeType} timestamp is too far from now',
         );
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // DefaultOfflineRetryPolicy
+  // -------------------------------------------------------------------------
+
+  group('DefaultOfflineRetryPolicy', () {
+    test('shouldRetry returns false when attemptCount exceeds maxRetries', () {
+      const policy = DefaultOfflineRetryPolicy(maxRetries: 3);
+      final ex = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        type: DioExceptionType.connectionError,
+      );
+      expect(policy.shouldRetry(ex, 3), isFalse);
+      expect(policy.shouldRetry(ex, 4), isFalse);
+      expect(policy.shouldRetry(ex, 2), isTrue);
+    });
+
+    test('shouldRetry returns false on standard 4xx client errors except 408/429', () {
+      const policy = DefaultOfflineRetryPolicy(maxRetries: 3);
+      
+      final ex400 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 400),
+        type: DioExceptionType.badResponse,
+      );
+      final ex401 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 401),
+        type: DioExceptionType.badResponse,
+      );
+      final ex404 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 404),
+        type: DioExceptionType.badResponse,
+      );
+      final ex408 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 408),
+        type: DioExceptionType.badResponse,
+      );
+      final ex429 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 429),
+        type: DioExceptionType.badResponse,
+      );
+      final ex500 = DioException(
+        requestOptions: RequestOptions(path: 'u'),
+        response: Response(requestOptions: RequestOptions(path: 'u'), statusCode: 500),
+        type: DioExceptionType.badResponse,
+      );
+
+      expect(policy.shouldRetry(ex400, 1), isFalse);
+      expect(policy.shouldRetry(ex401, 1), isFalse);
+      expect(policy.shouldRetry(ex404, 1), isFalse);
+      expect(policy.shouldRetry(ex408, 1), isTrue);
+      expect(policy.shouldRetry(ex429, 1), isTrue);
+      expect(policy.shouldRetry(ex500, 1), isTrue);
+    });
+  });
+  // -------------------------------------------------------------------------
+  // mergePendingMutations
+  // -------------------------------------------------------------------------
+
+  group('OfflineHttpClient.mergePendingMutations', () {
+    late OfflineHttpClient client;
+    int testNum = 0;
+
+    setUp(() async {
+      testNum++;
+      final dio = Dio();
+      dio.httpClientAdapter = MockOfflineAdapter();
+      client = OfflineHttpClient(
+        dio,
+        logger: SilentOfflineLogger(),
+      );
+      // Initialize with config to set late variables
+      await client.init(
+        hivePath: _hiveDir.path,
+        encryptionKey: Uint8List(32),
+        boxPrefix: 'test_merge_$testNum',
+      );
+    });
+
+    tearDown(() async {
+      await client.dispose();
+    });
+
+    test('POST appends to the beginning of the list', () async {
+      // Add a pending POST request to queue
+      await client.post('/items', data: {'id': '2', 'name': 'Item 2'});
+
+      final cached = [
+        {'id': '1', 'name': 'Item 1'}
+      ];
+
+      final merged = client.mergePendingMutations('/items', cached);
+      expect(merged, isList);
+      expect(merged.length, equals(2));
+      expect(merged[0]['id'], equals('2'));
+      expect(merged[1]['id'], equals('1'));
+    });
+
+    test('PUT replaces matching item in list or appends if not found', () async {
+      // 1. Replace existing
+      await client.put('/items/1', data: {'id': '1', 'name': 'Item 1 Updated'});
+      // 2. Put not found (inserts at beginning)
+      await client.put('/items/99', data: {'id': '99', 'name': 'Item 99'});
+
+      final cached = [
+        {'id': '1', 'name': 'Item 1'},
+        {'id': '2', 'name': 'Item 2'},
+      ];
+
+      final merged = client.mergePendingMutations('/items', cached);
+      expect(merged, isList);
+      expect(merged.length, equals(3));
+      
+      // Since it's processed in queue order, item 99 is inserted first, then item 1 is replaced
+      final item99 = merged.firstWhere((item) => item['id'] == '99');
+      final item1 = merged.firstWhere((item) => item['id'] == '1');
+      expect(item99['name'], equals('Item 99'));
+      expect(item1['name'], equals('Item 1 Updated'));
+    });
+
+    test('PATCH partially updates matching item in list and single map', () async {
+      // 1. Patch item in list
+      await client.patch('/items/1', data: {'name': 'Patched Name'});
+      
+      final cachedList = [
+        {'id': '1', 'name': 'Item 1', 'desc': 'Original description'}
+      ];
+
+      final mergedList = client.mergePendingMutations('/items', cachedList);
+      expect(mergedList[0]['id'], equals('1'));
+      expect(mergedList[0]['name'], equals('Patched Name'));
+      expect(mergedList[0]['desc'], equals('Original description'));
+
+      // 2. Patch single map
+      final cachedMap = {'id': '1', 'name': 'Item 1', 'desc': 'Original description'};
+      final mergedMap = client.mergePendingMutations('/items/1', cachedMap);
+      expect(mergedMap['id'], equals('1'));
+      expect(mergedMap['name'], equals('Patched Name'));
+      expect(mergedMap['desc'], equals('Original description'));
+    });
+
+    test('DELETE removes matching item from list and returns null for map', () async {
+      // 1. Delete item in list
+      await client.delete('/items/1');
+      
+      final cachedList = [
+        {'id': '1', 'name': 'Item 1'},
+        {'id': '2', 'name': 'Item 2'}
+      ];
+
+      final mergedList = client.mergePendingMutations('/items', cachedList);
+      expect(mergedList.length, equals(1));
+      expect(mergedList[0]['id'], equals('2'));
+
+      // 2. Delete single map
+      final cachedMap = {'id': '1', 'name': 'Item 1'};
+      final mergedMap = client.mergePendingMutations('/items/1', cachedMap);
+      expect(mergedMap, isNull);
     });
   });
 }
