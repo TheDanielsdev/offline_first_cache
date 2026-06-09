@@ -761,8 +761,12 @@ class OfflineHttpClient {
             // Attach ETag / Last-Modified for conditional requests
             if (stale?.etag != null) {
               options.headers['If-None-Match'] = stale!.etag;
+              options.validateStatus =
+                  (status) => status != null && (status < 300 || status == 304);
             } else if (stale?.lastModified != null) {
               options.headers['If-Modified-Since'] = stale!.lastModified;
+              options.validateStatus =
+                  (status) => status != null && (status < 300 || status == 304);
             }
           }
           return handler.next(options);

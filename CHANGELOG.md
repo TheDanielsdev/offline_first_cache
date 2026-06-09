@@ -1,4 +1,4 @@
-## 0.0.6
+## 0.0.7
 
 * **Infinite Loop Fix (Stale-While-Revalidate):** Fixed a critical bug where background
   revalidation requests re-entered the interceptor, causing an infinite GET loop on stale
