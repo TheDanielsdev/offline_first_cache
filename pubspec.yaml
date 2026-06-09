@@ -1,6 +1,6 @@
 name: offline_first_cache
 description: "An offline-first HTTP client for Flutter/Dart with request queuing, GET caching (stale-while-revalidate, tag-based invalidation), and a built-in Queue Inspector UI."
-version: 0.0.5
+version: 0.0.6
 homepage: https://github.com/TheDanielsdev/offline_first_cache
 repository: https://github.com/TheDanielsdev/offline_first_cache
 issue_tracker: https://github.com/TheDanielsdev/offline_first_cache/issues
@@ -10,6 +10,7 @@ environment:
   flutter: ">=3.24.0"
 
 dependencies:
+  flutter_skill: ^0.2.6
   flutter:
     sdk: flutter
   hive: ^2.0.0  # Add Hive dependency here if needed

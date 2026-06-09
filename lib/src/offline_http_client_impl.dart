@@ -116,7 +116,8 @@ class OfflineHttpClient {
   })  : _config = config,
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
         _logger = logger ?? ConsoleOfflineLogger(minLevel: config.logLevel) {
-    _retryPolicy = config.retryPolicy ?? DefaultOfflineRetryPolicy(maxRetries: config.maxRetries);
+    _retryPolicy = config.retryPolicy ??
+        DefaultOfflineRetryPolicy(maxRetries: config.maxRetries);
     queueSizeNotifier = ValueNotifier(0);
     events.listen((e) {
       if (e is RequestQueuedEvent ||
@@ -549,7 +550,8 @@ class OfflineHttpClient {
       try {
         final uri = Uri.parse(request.url);
         // Match if the request path starts with the normalized path, e.g. /posts/1 starts with /posts
-        return uri.path == normalizedPath || uri.path.startsWith('$normalizedPath/');
+        return uri.path == normalizedPath ||
+            uri.path.startsWith('$normalizedPath/');
       } catch (_) {
         return false;
       }
@@ -582,10 +584,12 @@ class OfflineHttpClient {
     // Helper to check if an item matches the mutation (by ID)
     bool matchesId(dynamic item, PendingRequest mutation) {
       if (item is! Map) return false;
-      
+
       final urlId = extractIdFromUrl(mutation.url);
-      final bodyId = (mutation.body['id'] ?? mutation.body['_id'] ?? mutation.body['uuid'])?.toString();
-      
+      final bodyId =
+          (mutation.body['id'] ?? mutation.body['_id'] ?? mutation.body['uuid'])
+              ?.toString();
+
       for (final idKey in const ['id', '_id', 'uuid']) {
         if (item.containsKey(idKey)) {
           final itemIdStr = item[idKey]?.toString();
@@ -601,7 +605,7 @@ class OfflineHttpClient {
 
     if (cachedData is List) {
       final list = List<dynamic>.from(cachedData);
-      
+
       for (final mutation in mutations) {
         final method = mutation.method.toUpperCase();
         final body = mutation.body;
@@ -717,12 +721,14 @@ class OfflineHttpClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          print('CLIENT INTERCEPTOR ON_REQUEST: ${options.method} ${options.path}');
           if (options.method.toUpperCase() == 'GET') {
+            final isBackgroundRevalidate =
+                options.extra['_background_revalidate'] as bool? ?? false;
+
             final cacheKey = options.uri.toString();
             final stale = _cache.readAllowingStale(cacheKey);
 
-            if (stale != null) {
+            if (stale != null && !isBackgroundRevalidate) {
               final isExpired = stale.isExpired;
 
               if (!_isOnline && !isExpired) {
@@ -789,7 +795,8 @@ class OfflineHttpClient {
           return handler.next(response);
         },
         onError: (err, handler) async {
-          print('INTERCEPTOR ON_ERROR CALLED: err.type=${err.type}, err.message=${err.message}, method=${err.requestOptions.method}');
+          print(
+              'INTERCEPTOR ON_ERROR CALLED: err.type=${err.type}, err.message=${err.message}, method=${err.requestOptions.method}');
           final options = err.requestOptions;
           final method = options.method.toUpperCase();
           final isNetworkError = _isNetworkError(err);
@@ -877,21 +884,22 @@ class OfflineHttpClient {
     );
   }
 
+  final _revalidatingUrls = <String>{};
+
   void _revalidateInBackground(RequestOptions options) {
     final url = options.uri.toString();
+    if (_revalidatingUrls.contains(url)) return; // already in flight
+    _revalidatingUrls.add(url);
+
     Future(() async {
       try {
-        final res = await _dio.get(
-          url,
-          options: Options(headers: options.headers, extra: options.extra),
-        );
-        if (res.statusCode != null &&
-            res.statusCode! >= 200 &&
-            res.statusCode! < 300) {
-          _emit(BackgroundRevalidatedEvent(url: url, success: true));
-        }
-      } catch (_) {
-        _emit(BackgroundRevalidatedEvent(url: url, success: false));
+        await _dio.get(url,
+            options: Options(
+              headers: options.headers,
+              extra: {...options.extra, '_background_revalidate': true},
+            ));
+      } finally {
+        _revalidatingUrls.remove(url);
       }
     });
   }
