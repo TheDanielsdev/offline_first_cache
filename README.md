@@ -8,7 +8,7 @@ It handles offline GET caching (with tag invalidation, stale-while-revalidate) a
 
 ## Demo
 
-![offline_first_cache demo](https://raw.githubusercontent.com/TheDanielsdev/offline_first_cache/main/20260625205340-ezgif.com-video-to-gif-converter.gif)
+
 
 ## Features
 
