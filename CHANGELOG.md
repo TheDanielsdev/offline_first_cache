@@ -1,3 +1,9 @@
+## 0.0.9
+
+* **Structured Logging:** Replaced console `print` calls in core interceptors with configurable `OfflineLogger` calls.
+* **Dependency Optimization:** Cleaned up unused transitive dependencies and updated package environment constraints.
+* **Documentation:** Fixed installation instructions and added package status badges in README.
+
 ## 0.0.8
 
 * **Infinite Loop Fix (Stale-While-Revalidate):** Fixed a critical bug where background
