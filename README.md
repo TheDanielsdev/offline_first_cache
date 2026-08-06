@@ -1,5 +1,9 @@
 # offline_first_cache
 
+[![pub package](https://img.shields.io/pub/v/offline_first_cache.svg)](https://pub.dev/packages/offline_first_cache)
+[![pub points](https://img.shields.io/pub/points/offline_first_cache?color=2E7D32)](https://pub.dev/packages/offline_first_cache/score)
+[![license](https://img.shields.io/github/license/TheDanielsdev/offline_first_cache)](https://github.com/TheDanielsdev/offline_first_cache)
+
 An offline-first HTTP client wrapper for Flutter and Dart built on top of [Dio](https://pub.dev/packages/dio), [Hive](https://pub.dev/packages/hive), and [connectivity_plus](https://pub.dev/packages/connectivity_plus).
 
 It handles offline GET caching (with tag invalidation, stale-while-revalidate) and queues mutation requests (`POST`, `PUT`, `DELETE`, `PATCH`) locally while offline, automatically retrying them in priority order with exponential backoff when connection is restored.
@@ -37,12 +41,17 @@ It handles offline GET caching (with tag invalidation, stale-while-revalidate) a
 
 ## Installation
 
-Add this package to your `pubspec.yaml`:
+Add this package to your project using `flutter pub add`:
+
+```bash
+flutter pub add offline_first_cache
+```
+
+Or manually add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  offline_first_cache:
-    path: # your local path or git URL
+  offline_first_cache: ^0.0.8
   dio: ^5.0.0
 ```
 

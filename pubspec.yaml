@@ -1,6 +1,6 @@
 name: offline_first_cache
-description: "An offline-first HTTP client for Flutter/Dart with request queuing, GET caching (stale-while-revalidate, tag-based invalidation), and a built-in Queue Inspector UI."
-version: 0.0.8
+description: "An offline-first HTTP client and caching engine for Flutter/Dart with request queuing, GET caching (stale-while-revalidate, tag invalidation), dead-letter handling, and a built-in Queue Inspector UI."
+version: 0.0.9
 homepage: https://github.com/TheDanielsdev/offline_first_cache
 repository: https://github.com/TheDanielsdev/offline_first_cache
 issue_tracker: https://github.com/TheDanielsdev/offline_first_cache/issues
@@ -10,34 +10,24 @@ environment:
   flutter: ">=3.24.0"
 
 dependencies:
-  flutter_skill: ^0.2.6
   flutter:
     sdk: flutter
-  hive: ^2.0.0  # Add Hive dependency here if needed
-  dio: ^5.0.0   # Example: Add Dio if you're using it
+  dio: ^5.0.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
   connectivity_plus: ^7.0.0
   uuid: ^4.5.2
-  hive_flutter: ^1.1.0
   flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  build_runner: ^2.0.0  # Add this line
-  hive_generator: ^2.0.0  # Add if you're using Hive with code generation
+  build_runner: ^2.4.0
+  hive_generator: ^2.0.1
+  hive_test: ^1.0.1
   mockito: ^5.4.4
-  hive_test: ^1.0.0
-  
   mocktail: ^1.0.4
 
 flutter:
- 
 
-# The following sections for assets and fonts can be added as needed.
-# assets:
-#   - images/a_dot_burr.jpeg
-# fonts:
-#   - family: Schyler
-#     fonts:
-#       - asset: fonts/Schyler-Regular.ttf

@@ -717,7 +717,7 @@ class OfflineHttpClient {
   }
 
   void _installInterceptors() {
-    print('INSTALLING INTERCEPTOR! BEFORE length=${_dio.interceptors.length}');
+    _logger.debug('Installing interceptor. Current length: ${_dio.interceptors.length}');
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -799,8 +799,8 @@ class OfflineHttpClient {
           return handler.next(response);
         },
         onError: (err, handler) async {
-          print(
-              'INTERCEPTOR ON_ERROR CALLED: err.type=${err.type}, err.message=${err.message}, method=${err.requestOptions.method}');
+          _logger.debug(
+              'Interceptor onError: err.type=${err.type}, err.message=${err.message}, method=${err.requestOptions.method}');
           final options = err.requestOptions;
           final method = options.method.toUpperCase();
           final isNetworkError = _isNetworkError(err);
@@ -842,7 +842,7 @@ class OfflineHttpClient {
                 ),
               );
             } catch (e, stack) {
-              print('ERROR IN INTERCEPTOR: $e\n$stack');
+              _logger.error('Error in queue interceptor', error: e, stackTrace: stack);
               rethrow;
             }
           }
