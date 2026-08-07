@@ -1,3 +1,8 @@
+## 0.0.10
+
+* **Package Metadata:** Refined package description and pubspec metadata formatting.
+* **Dependency Constraints:** Updated Dio constraint lower bound (`^5.4.0`) and added compatibility support for `flutter_secure_storage` v11.
+
 ## 0.0.9
 
 * **Structured Logging:** Replaced console `print` calls in core interceptors with configurable `OfflineLogger` calls.
